@@ -17,12 +17,15 @@ from esphome.const import (
     CONF_DISCOVERY_PREFIX,
     CONF_DISCOVERY_RETAIN,
     CONF_DISCOVERY_UNIQUE_ID_GENERATOR,
+    CONF_DISCOVERY_OBJECT_ID_GENERATOR,
     CONF_ID,
     CONF_KEEPALIVE,
     CONF_LEVEL,
     CONF_LOG_TOPIC,
     CONF_ON_JSON_MESSAGE,
     CONF_ON_MESSAGE,
+    CONF_ON_CONNECT,
+    CONF_ON_DISCONNECT,
     CONF_PASSWORD,
     CONF_PAYLOAD,
     CONF_PAYLOAD_AVAILABLE,
@@ -89,6 +92,10 @@ MQTTMessageTrigger = mqtt_ns.class_(
 MQTTJsonMessageTrigger = mqtt_ns.class_(
     "MQTTJsonMessageTrigger", automation.Trigger.template(cg.JsonObjectConst)
 )
+MQTTConnectTrigger = mqtt_ns.class_("MQTTConnectTrigger", automation.Trigger.template())
+MQTTDisconnectTrigger = mqtt_ns.class_(
+    "MQTTDisconnectTrigger", automation.Trigger.template()
+)
 MQTTComponent = mqtt_ns.class_("MQTTComponent", cg.Component)
 MQTTConnectedCondition = mqtt_ns.class_("MQTTConnectedCondition", Condition)
 
@@ -103,11 +110,18 @@ MQTTTextSensor = mqtt_ns.class_("MQTTTextSensor", MQTTComponent)
 MQTTNumberComponent = mqtt_ns.class_("MQTTNumberComponent", MQTTComponent)
 MQTTSelectComponent = mqtt_ns.class_("MQTTSelectComponent", MQTTComponent)
 MQTTButtonComponent = mqtt_ns.class_("MQTTButtonComponent", MQTTComponent)
+MQTTLockComponent = mqtt_ns.class_("MQTTLockComponent", MQTTComponent)
 
 MQTTDiscoveryUniqueIdGenerator = mqtt_ns.enum("MQTTDiscoveryUniqueIdGenerator")
 MQTT_DISCOVERY_UNIQUE_ID_GENERATOR_OPTIONS = {
     "legacy": MQTTDiscoveryUniqueIdGenerator.MQTT_LEGACY_UNIQUE_ID_GENERATOR,
     "mac": MQTTDiscoveryUniqueIdGenerator.MQTT_MAC_ADDRESS_UNIQUE_ID_GENERATOR,
+}
+
+MQTTDiscoveryObjectIdGenerator = mqtt_ns.enum("MQTTDiscoveryObjectIdGenerator")
+MQTT_DISCOVERY_OBJECT_ID_GENERATOR_OPTIONS = {
+    "none": MQTTDiscoveryObjectIdGenerator.MQTT_NONE_OBJECT_ID_GENERATOR,
+    "device_name": MQTTDiscoveryObjectIdGenerator.MQTT_DEVICE_NAME_OBJECT_ID_GENERATOR,
 }
 
 
@@ -180,6 +194,9 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_DISCOVERY_UNIQUE_ID_GENERATOR, default="legacy"): cv.enum(
                 MQTT_DISCOVERY_UNIQUE_ID_GENERATOR_OPTIONS
             ),
+            cv.Optional(CONF_DISCOVERY_OBJECT_ID_GENERATOR, default="none"): cv.enum(
+                MQTT_DISCOVERY_OBJECT_ID_GENERATOR_OPTIONS
+            ),
             cv.Optional(CONF_USE_ABBREVIATIONS, default=True): cv.boolean,
             cv.Optional(CONF_BIRTH_MESSAGE): MQTT_MESSAGE_SCHEMA,
             cv.Optional(CONF_WILL_MESSAGE): MQTT_MESSAGE_SCHEMA,
@@ -201,6 +218,18 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(
                 CONF_REBOOT_TIMEOUT, default="15min"
             ): cv.positive_time_period_milliseconds,
+            cv.Optional(CONF_ON_CONNECT): automation.validate_automation(
+                {
+                    cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(MQTTConnectTrigger),
+                }
+            ),
+            cv.Optional(CONF_ON_DISCONNECT): automation.validate_automation(
+                {
+                    cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(
+                        MQTTDisconnectTrigger
+                    ),
+                }
+            ),
             cv.Optional(CONF_ON_MESSAGE): automation.validate_automation(
                 {
                     cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(MQTTMessageTrigger),
@@ -221,6 +250,7 @@ CONFIG_SCHEMA = cv.All(
         }
     ),
     validate_config,
+    cv.only_on(["esp32", "esp8266"]),
 )
 
 
@@ -260,19 +290,27 @@ async def to_code(config):
     discovery_retain = config[CONF_DISCOVERY_RETAIN]
     discovery_prefix = config[CONF_DISCOVERY_PREFIX]
     discovery_unique_id_generator = config[CONF_DISCOVERY_UNIQUE_ID_GENERATOR]
+    discovery_object_id_generator = config[CONF_DISCOVERY_OBJECT_ID_GENERATOR]
 
     if not discovery:
         cg.add(var.disable_discovery())
     elif discovery == "CLEAN":
         cg.add(
             var.set_discovery_info(
-                discovery_prefix, discovery_unique_id_generator, discovery_retain, True
+                discovery_prefix,
+                discovery_unique_id_generator,
+                discovery_object_id_generator,
+                discovery_retain,
+                True,
             )
         )
     elif CONF_DISCOVERY_RETAIN in config or CONF_DISCOVERY_PREFIX in config:
         cg.add(
             var.set_discovery_info(
-                discovery_prefix, discovery_unique_id_generator, discovery_retain
+                discovery_prefix,
+                discovery_unique_id_generator,
+                discovery_object_id_generator,
+                discovery_retain,
             )
         )
 
@@ -342,6 +380,14 @@ async def to_code(config):
     for conf in config.get(CONF_ON_JSON_MESSAGE, []):
         trig = cg.new_Pvariable(conf[CONF_TRIGGER_ID], conf[CONF_TOPIC], conf[CONF_QOS])
         await automation.build_automation(trig, [(cg.JsonObjectConst, "x")], conf)
+
+    for conf in config.get(CONF_ON_CONNECT, []):
+        trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
+        await automation.build_automation(trigger, [], conf)
+
+    for conf in config.get(CONF_ON_DISCONNECT, []):
+        trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
+        await automation.build_automation(trigger, [], conf)
 
 
 MQTT_PUBLISH_ACTION_SCHEMA = cv.Schema(

@@ -9,15 +9,22 @@
 #include "esphome/core/log.h"
 #include "esphome/components/json/json_util.h"
 #include "esphome/components/network/ip_address.h"
-#ifdef USE_ESP_IDF
+#if defined(USE_ESP_IDF)
 #include "mqtt_backend_idf.h"
-#else
+#elif defined(USE_ARDUINO)
 #include "mqtt_backend_arduino.h"
 #endif
 #include "lwip/ip_addr.h"
 
+#include <vector>
+
 namespace esphome {
 namespace mqtt {
+
+/** Callback for MQTT events.
+ */
+using mqtt_on_connect_callback_t = std::function<MQTTBackend::on_connect_callback_t>;
+using mqtt_on_disconnect_callback_t = std::function<MQTTBackend::on_disconnect_callback_t>;
 
 /** Callback for MQTT subscriptions.
  *
@@ -57,6 +64,12 @@ enum MQTTDiscoveryUniqueIdGenerator {
   MQTT_MAC_ADDRESS_UNIQUE_ID_GENERATOR,
 };
 
+/// available discovery object_id generators
+enum MQTTDiscoveryObjectIdGenerator {
+  MQTT_NONE_OBJECT_ID_GENERATOR = 0,
+  MQTT_DEVICE_NAME_OBJECT_ID_GENERATOR,
+};
+
 /** Internal struct for MQTT Home Assistant discovery
  *
  * See <a href="https://www.home-assistant.io/docs/mqtt/discovery/">MQTT Discovery</a>.
@@ -66,6 +79,7 @@ struct MQTTDiscoveryInfo {
   bool retain;         ///< Whether to retain discovery messages.
   bool clean;
   MQTTDiscoveryUniqueIdGenerator unique_id_generator;
+  MQTTDiscoveryObjectIdGenerator object_id_generator;
 };
 
 enum MQTTClientState {
@@ -102,10 +116,11 @@ class MQTTClientComponent : public Component {
    * See <a href="https://www.home-assistant.io/docs/mqtt/discovery/">MQTT Discovery</a>.
    * @param prefix The Home Assistant discovery prefix.
    * @param unique_id_generator Controls how UniqueId is generated.
+   * @param object_id_generator Controls how ObjectId is generated.
    * @param retain Whether to retain discovery messages.
    */
-  void set_discovery_info(std::string &&prefix, MQTTDiscoveryUniqueIdGenerator unique_id_generator, bool retain,
-                          bool clean = false);
+  void set_discovery_info(std::string &&prefix, MQTTDiscoveryUniqueIdGenerator unique_id_generator,
+                          MQTTDiscoveryObjectIdGenerator object_id_generator, bool retain, bool clean = false);
   /// Get Home Assistant discovery info.
   const MQTTDiscoveryInfo &get_discovery_info() const;
   /// Globally disable Home Assistant discovery.
@@ -232,6 +247,8 @@ class MQTTClientComponent : public Component {
   void set_username(const std::string &username) { this->credentials_.username = username; }
   void set_password(const std::string &password) { this->credentials_.password = password; }
   void set_client_id(const std::string &client_id) { this->credentials_.client_id = client_id; }
+  void set_on_connect(mqtt_on_connect_callback_t &&callback);
+  void set_on_disconnect(mqtt_on_disconnect_callback_t &&callback);
 
  protected:
   /// Reconnect to the MQTT broker if not already connected.
@@ -269,6 +286,7 @@ class MQTTClientComponent : public Component {
       .retain = true,
       .clean = false,
       .unique_id_generator = MQTT_LEGACY_UNIQUE_ID_GENERATOR,
+      .object_id_generator = MQTT_NONE_OBJECT_ID_GENERATOR,
   };
   std::string topic_prefix_{};
   MQTTMessage log_message_;
@@ -276,9 +294,9 @@ class MQTTClientComponent : public Component {
   int log_level_{ESPHOME_LOG_LEVEL};
 
   std::vector<MQTTSubscription> subscriptions_;
-#ifdef USE_ESP_IDF
+#if defined(USE_ESP_IDF)
   MQTTBackendIDF mqtt_backend_;
-#else
+#elif defined(USE_ARDUINO)
   MQTTBackendArduino mqtt_backend_;
 #endif
 
@@ -316,6 +334,20 @@ class MQTTJsonMessageTrigger : public Trigger<JsonObjectConst> {
   explicit MQTTJsonMessageTrigger(const std::string &topic, uint8_t qos) {
     global_mqtt_client->subscribe_json(
         topic, [this](const std::string &topic, JsonObject root) { this->trigger(root); }, qos);
+  }
+};
+
+class MQTTConnectTrigger : public Trigger<> {
+ public:
+  explicit MQTTConnectTrigger(MQTTClientComponent *&client) {
+    client->set_on_connect([this](bool session_present) { this->trigger(); });
+  }
+};
+
+class MQTTDisconnectTrigger : public Trigger<> {
+ public:
+  explicit MQTTDisconnectTrigger(MQTTClientComponent *&client) {
+    client->set_on_disconnect([this](MQTTClientDisconnectReason reason) { this->trigger(); });
   }
 };
 

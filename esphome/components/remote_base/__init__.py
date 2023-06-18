@@ -27,10 +27,12 @@ from esphome.const import (
     CONF_CARRIER_FREQUENCY,
     CONF_RC_CODE_1,
     CONF_RC_CODE_2,
+    CONF_MAGNITUDE,
+    CONF_WAND_ID,
     CONF_LEVEL,
 )
 from esphome.core import coroutine
-from esphome.jsonschema import jschema_extractor
+from esphome.schema_extractors import SCHEMA_EXTRACT, schema_extractor
 from esphome.util import Registry, SimpleRegistry
 
 AUTO_LOAD = ["binary_sensor"]
@@ -165,7 +167,7 @@ def declare_protocol(name):
 
 
 BINARY_SENSOR_REGISTRY = Registry(
-    binary_sensor.BINARY_SENSOR_SCHEMA.extend(
+    binary_sensor.binary_sensor_schema().extend(
         {
             cv.GenerateID(CONF_RECEIVER_ID): cv.use_id(RemoteReceiverBase),
         }
@@ -193,14 +195,14 @@ def validate_dumpers(value):
 def validate_triggers(base_schema):
     assert isinstance(base_schema, cv.Schema)
 
-    @jschema_extractor("triggers")
+    @schema_extractor("triggers")
     def validator(config):
         added_keys = {}
         for key, (_, valid) in TRIGGER_REGISTRY.items():
             added_keys[cv.Optional(key)] = valid
         new_schema = base_schema.extend(added_keys)
-        # pylint: disable=comparison-with-callable
-        if config == jschema_extractor:
+
+        if config == SCHEMA_EXTRACT:
             return new_schema
         return new_schema(config)
 
@@ -233,6 +235,107 @@ async def build_dumpers(config):
         dumper = await cg.build_registry_entry(DUMPER_REGISTRY, conf)
         dumpers.append(dumper)
     return dumpers
+
+
+# CanalSat
+(
+    CanalSatData,
+    CanalSatBinarySensor,
+    CanalSatTrigger,
+    CanalSatAction,
+    CanalSatDumper,
+) = declare_protocol("CanalSat")
+CANALSAT_SCHEMA = cv.Schema(
+    {
+        cv.Required(CONF_DEVICE): cv.hex_uint8_t,
+        cv.Optional(CONF_ADDRESS, default=0): cv.hex_uint8_t,
+        cv.Required(CONF_COMMAND): cv.hex_uint8_t,
+    }
+)
+
+
+@register_binary_sensor("canalsat", CanalSatBinarySensor, CANALSAT_SCHEMA)
+def canalsat_binary_sensor(var, config):
+    cg.add(
+        var.set_data(
+            cg.StructInitializer(
+                CanalSatData,
+                ("device", config[CONF_DEVICE]),
+                ("address", config[CONF_ADDRESS]),
+                ("command", config[CONF_COMMAND]),
+            )
+        )
+    )
+
+
+@register_trigger("canalsat", CanalSatTrigger, CanalSatData)
+def canalsat_trigger(var, config):
+    pass
+
+
+@register_dumper("canalsat", CanalSatDumper)
+def canalsat_dumper(var, config):
+    pass
+
+
+@register_action("canalsat", CanalSatAction, CANALSAT_SCHEMA)
+async def canalsat_action(var, config, args):
+    template_ = await cg.templatable(config[CONF_DEVICE], args, cg.uint8)
+    cg.add(var.set_device(template_))
+    template_ = await cg.templatable(config[CONF_ADDRESS], args, cg.uint8)
+    cg.add(var.set_address(template_))
+    template_ = await cg.templatable(config[CONF_COMMAND], args, cg.uint8)
+    cg.add(var.set_command(template_))
+
+
+(
+    CanalSatLDData,
+    CanalSatLDBinarySensor,
+    CanalSatLDTrigger,
+    CanalSatLDAction,
+    CanalSatLDDumper,
+) = declare_protocol("CanalSatLD")
+CANALSATLD_SCHEMA = cv.Schema(
+    {
+        cv.Required(CONF_DEVICE): cv.hex_uint8_t,
+        cv.Optional(CONF_ADDRESS, default=0): cv.hex_uint8_t,
+        cv.Required(CONF_COMMAND): cv.hex_uint8_t,
+    }
+)
+
+
+@register_binary_sensor("canalsatld", CanalSatLDBinarySensor, CANALSAT_SCHEMA)
+def canalsatld_binary_sensor(var, config):
+    cg.add(
+        var.set_data(
+            cg.StructInitializer(
+                CanalSatLDData,
+                ("device", config[CONF_DEVICE]),
+                ("address", config[CONF_ADDRESS]),
+                ("command", config[CONF_COMMAND]),
+            )
+        )
+    )
+
+
+@register_trigger("canalsatld", CanalSatLDTrigger, CanalSatLDData)
+def canalsatld_trigger(var, config):
+    pass
+
+
+@register_dumper("canalsatld", CanalSatLDDumper)
+def canalsatld_dumper(var, config):
+    pass
+
+
+@register_action("canalsatld", CanalSatLDAction, CANALSATLD_SCHEMA)
+async def canalsatld_action(var, config, args):
+    template_ = await cg.templatable(config[CONF_DEVICE], args, cg.uint8)
+    cg.add(var.set_device(template_))
+    template_ = await cg.templatable(config[CONF_ADDRESS], args, cg.uint8)
+    cg.add(var.set_address(template_))
+    template_ = await cg.templatable(config[CONF_COMMAND], args, cg.uint8)
+    cg.add(var.set_command(template_))
 
 
 # Coolix
@@ -389,6 +492,54 @@ async def lg_action(var, config, args):
     cg.add(var.set_data(template_))
     template_ = await cg.templatable(config[CONF_NBITS], args, cg.uint8)
     cg.add(var.set_nbits(template_))
+
+
+# MagiQuest
+(
+    MagiQuestData,
+    MagiQuestBinarySensor,
+    MagiQuestTrigger,
+    MagiQuestAction,
+    MagiQuestDumper,
+) = declare_protocol("MagiQuest")
+
+MAGIQUEST_SCHEMA = cv.Schema(
+    {
+        cv.Required(CONF_WAND_ID): cv.hex_uint32_t,
+        cv.Optional(CONF_MAGNITUDE, default=0xFFFF): cv.hex_uint16_t,
+    }
+)
+
+
+@register_binary_sensor("magiquest", MagiQuestBinarySensor, MAGIQUEST_SCHEMA)
+def magiquest_binary_sensor(var, config):
+    cg.add(
+        var.set_data(
+            cg.StructInitializer(
+                MagiQuestData,
+                ("magnitude", config[CONF_MAGNITUDE]),
+                ("wand_id", config[CONF_WAND_ID]),
+            )
+        )
+    )
+
+
+@register_trigger("magiquest", MagiQuestTrigger, MagiQuestData)
+def magiquest_trigger(var, config):
+    pass
+
+
+@register_dumper("magiquest", MagiQuestDumper)
+def magiquest_dumper(var, config):
+    pass
+
+
+@register_action("magiquest", MagiQuestAction, MAGIQUEST_SCHEMA)
+async def magiquest_action(var, config, args):
+    template_ = await cg.templatable(config[CONF_WAND_ID], args, cg.uint32)
+    cg.add(var.set_wand_id(template_))
+    template_ = await cg.templatable(config[CONF_MAGNITUDE], args, cg.uint16)
+    cg.add(var.set_magnitude(template_))
 
 
 # NEC
@@ -678,6 +829,49 @@ async def rc5_action(var, config, args):
     cg.add(var.set_command(template_))
 
 
+# RC6
+RC6Data, RC6BinarySensor, RC6Trigger, RC6Action, RC6Dumper = declare_protocol("RC6")
+RC6_SCHEMA = cv.Schema(
+    {
+        cv.Required(CONF_ADDRESS): cv.hex_uint8_t,
+        cv.Required(CONF_COMMAND): cv.hex_uint8_t,
+    }
+)
+
+
+@register_binary_sensor("rc6", RC6BinarySensor, RC6_SCHEMA)
+def rc6_binary_sensor(var, config):
+    cg.add(
+        var.set_data(
+            cg.StructInitializer(
+                RC6Data,
+                ("mode", 0),
+                ("toggle", 0),
+                ("address", config[CONF_ADDRESS]),
+                ("command", config[CONF_COMMAND]),
+            )
+        )
+    )
+
+
+@register_trigger("rc6", RC6Trigger, RC6Data)
+def rc6_trigger(var, config):
+    pass
+
+
+@register_dumper("rc6", RC6Dumper)
+def rc6_dumper(var, config):
+    pass
+
+
+@register_action("rc6", RC6Action, RC6_SCHEMA)
+async def rc6_action(var, config, args):
+    template_ = await cg.templatable(config[CONF_ADDRESS], args, cg.uint8)
+    cg.add(var.set_address(template_))
+    template_ = await cg.templatable(config[CONF_COMMAND], args, cg.uint8)
+    cg.add(var.set_command(template_))
+
+
 # RC Switch Raw
 RC_SWITCH_TIMING_SCHEMA = cv.All([cv.uint8_t], cv.Length(min=2, max=2))
 
@@ -847,7 +1041,7 @@ async def rc_switch_raw_action(var, config, args):
         config[CONF_PROTOCOL], args, RCSwitchBase, to_exp=build_rc_switch_protocol
     )
     cg.add(var.set_protocol(proto))
-    cg.add(var.set_code((await cg.templatable(config[CONF_CODE], args, cg.std_string))))
+    cg.add(var.set_code(await cg.templatable(config[CONF_CODE], args, cg.std_string)))
 
 
 @register_binary_sensor(
@@ -868,13 +1062,11 @@ async def rc_switch_type_a_action(var, config, args):
         config[CONF_PROTOCOL], args, RCSwitchBase, to_exp=build_rc_switch_protocol
     )
     cg.add(var.set_protocol(proto))
+    cg.add(var.set_group(await cg.templatable(config[CONF_GROUP], args, cg.std_string)))
     cg.add(
-        var.set_group((await cg.templatable(config[CONF_GROUP], args, cg.std_string)))
+        var.set_device(await cg.templatable(config[CONF_DEVICE], args, cg.std_string))
     )
-    cg.add(
-        var.set_device((await cg.templatable(config[CONF_DEVICE], args, cg.std_string)))
-    )
-    cg.add(var.set_state((await cg.templatable(config[CONF_STATE], args, bool))))
+    cg.add(var.set_state(await cg.templatable(config[CONF_STATE], args, bool)))
 
 
 @register_binary_sensor(
@@ -897,13 +1089,9 @@ async def rc_switch_type_b_action(var, config, args):
         config[CONF_PROTOCOL], args, RCSwitchBase, to_exp=build_rc_switch_protocol
     )
     cg.add(var.set_protocol(proto))
-    cg.add(
-        var.set_address((await cg.templatable(config[CONF_ADDRESS], args, cg.uint8)))
-    )
-    cg.add(
-        var.set_channel((await cg.templatable(config[CONF_CHANNEL], args, cg.uint8)))
-    )
-    cg.add(var.set_state((await cg.templatable(config[CONF_STATE], args, bool))))
+    cg.add(var.set_address(await cg.templatable(config[CONF_ADDRESS], args, cg.uint8)))
+    cg.add(var.set_channel(await cg.templatable(config[CONF_CHANNEL], args, cg.uint8)))
+    cg.add(var.set_state(await cg.templatable(config[CONF_STATE], args, bool)))
 
 
 @register_binary_sensor(
@@ -932,11 +1120,11 @@ async def rc_switch_type_c_action(var, config, args):
     )
     cg.add(var.set_protocol(proto))
     cg.add(
-        var.set_family((await cg.templatable(config[CONF_FAMILY], args, cg.std_string)))
+        var.set_family(await cg.templatable(config[CONF_FAMILY], args, cg.std_string))
     )
-    cg.add(var.set_group((await cg.templatable(config[CONF_GROUP], args, cg.uint8))))
-    cg.add(var.set_device((await cg.templatable(config[CONF_DEVICE], args, cg.uint8))))
-    cg.add(var.set_state((await cg.templatable(config[CONF_STATE], args, bool))))
+    cg.add(var.set_group(await cg.templatable(config[CONF_GROUP], args, cg.uint8)))
+    cg.add(var.set_device(await cg.templatable(config[CONF_DEVICE], args, cg.uint8)))
+    cg.add(var.set_state(await cg.templatable(config[CONF_STATE], args, bool)))
 
 
 @register_binary_sensor(
@@ -959,11 +1147,9 @@ async def rc_switch_type_d_action(var, config, args):
         config[CONF_PROTOCOL], args, RCSwitchBase, to_exp=build_rc_switch_protocol
     )
     cg.add(var.set_protocol(proto))
-    cg.add(
-        var.set_group((await cg.templatable(config[CONF_GROUP], args, cg.std_string)))
-    )
-    cg.add(var.set_device((await cg.templatable(config[CONF_DEVICE], args, cg.uint8))))
-    cg.add(var.set_state((await cg.templatable(config[CONF_STATE], args, bool))))
+    cg.add(var.set_group(await cg.templatable(config[CONF_GROUP], args, cg.std_string)))
+    cg.add(var.set_device(await cg.templatable(config[CONF_DEVICE], args, cg.uint8)))
+    cg.add(var.set_state(await cg.templatable(config[CONF_STATE], args, bool)))
 
 
 @register_trigger("rc_switch", RCSwitchTrigger, RCSwitchData)
@@ -1223,9 +1409,11 @@ MideaData, MideaBinarySensor, MideaTrigger, MideaAction, MideaDumper = declare_p
 MideaAction = ns.class_("MideaAction", RemoteTransmitterActionBase)
 MIDEA_SCHEMA = cv.Schema(
     {
-        cv.Required(CONF_CODE): cv.All(
-            [cv.Any(cv.hex_uint8_t, cv.uint8_t)],
-            cv.Length(min=5, max=5),
+        cv.Required(CONF_CODE): cv.templatable(
+            cv.All(
+                [cv.Any(cv.hex_uint8_t, cv.uint8_t)],
+                cv.Length(min=5, max=5),
+            )
         ),
     }
 )
@@ -1252,4 +1440,54 @@ def midea_dumper(var, config):
     MIDEA_SCHEMA,
 )
 async def midea_action(var, config, args):
-    cg.add(var.set_code(config[CONF_CODE]))
+    code_ = config[CONF_CODE]
+    if cg.is_template(code_):
+        template_ = await cg.templatable(code_, args, cg.std_vector.template(cg.uint8))
+        cg.add(var.set_code_template(template_))
+    else:
+        cg.add(var.set_code_static(code_))
+
+
+# AEHA
+AEHAData, AEHABinarySensor, AEHATrigger, AEHAAction, AEHADumper = declare_protocol(
+    "AEHA"
+)
+AEHA_SCHEMA = cv.Schema(
+    {
+        cv.Required(CONF_ADDRESS): cv.hex_uint16_t,
+        cv.Required(CONF_DATA): cv.All(
+            [cv.Any(cv.hex_uint8_t, cv.uint8_t)],
+            cv.Length(min=2, max=35),
+        ),
+    }
+)
+
+
+@register_binary_sensor("aeha", AEHABinarySensor, AEHA_SCHEMA)
+def aeha_binary_sensor(var, config):
+    cg.add(
+        var.set_data(
+            cg.StructInitializer(
+                AEHAData,
+                ("address", config[CONF_ADDRESS]),
+                ("data", config[CONF_DATA]),
+            )
+        )
+    )
+
+
+@register_trigger("aeha", AEHATrigger, AEHAData)
+def aeha_trigger(var, config):
+    pass
+
+
+@register_dumper("aeha", AEHADumper)
+def aeha_dumper(var, config):
+    pass
+
+
+@register_action("aeha", AEHAAction, AEHA_SCHEMA)
+async def aeha_action(var, config, args):
+    template_ = await cg.templatable(config[CONF_ADDRESS], args, cg.uint16)
+    cg.add(var.set_address(template_))
+    cg.add(var.set_data(config[CONF_DATA]))

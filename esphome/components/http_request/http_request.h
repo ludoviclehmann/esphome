@@ -6,10 +6,12 @@
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"
 #include "esphome/core/defines.h"
+
 #include <list>
 #include <map>
-#include <utility>
 #include <memory>
+#include <utility>
+#include <vector>
 
 #ifdef USE_ESP32
 #include <HTTPClient.h>
@@ -29,7 +31,10 @@ struct Header {
   const char *value;
 };
 
-class HttpRequestResponseTrigger;
+class HttpRequestResponseTrigger : public Trigger<int32_t, uint32_t> {
+ public:
+  void process(int32_t status_code, uint32_t duration_ms) { this->trigger(status_code, duration_ms); }
+};
 
 class HttpRequestComponent : public Component {
  public:
@@ -40,6 +45,8 @@ class HttpRequestComponent : public Component {
   void set_method(const char *method) { this->method_ = method; }
   void set_useragent(const char *useragent) { this->useragent_ = useragent; }
   void set_timeout(uint16_t timeout) { this->timeout_ = timeout; }
+  void set_follow_redirects(bool follow_redirects) { this->follow_redirects_ = follow_redirects; }
+  void set_redirect_limit(uint16_t limit) { this->redirect_limit_ = limit; }
   void set_body(const std::string &body) { this->body_ = body; }
   void set_headers(std::list<Header> headers) { this->headers_ = std::move(headers); }
   void send(const std::vector<HttpRequestResponseTrigger *> &response_triggers);
@@ -53,6 +60,8 @@ class HttpRequestComponent : public Component {
   const char *method_;
   const char *useragent_{nullptr};
   bool secure_;
+  bool follow_redirects_;
+  uint16_t redirect_limit_;
   uint16_t timeout_{5000};
   std::string body_;
   std::list<Header> headers_;
@@ -130,11 +139,6 @@ template<typename... Ts> class HttpRequestSendAction : public Action<Ts...> {
   std::map<const char *, TemplatableValue<std::string, Ts...>> json_{};
   std::function<void(Ts..., JsonObject)> json_func_{nullptr};
   std::vector<HttpRequestResponseTrigger *> response_triggers_;
-};
-
-class HttpRequestResponseTrigger : public Trigger<int> {
- public:
-  void process(int status_code) { this->trigger(status_code); }
 };
 
 }  // namespace http_request

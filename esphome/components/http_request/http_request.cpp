@@ -14,6 +14,8 @@ void HttpRequestComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "HTTP Request:");
   ESP_LOGCONFIG(TAG, "  Timeout: %ums", this->timeout_);
   ESP_LOGCONFIG(TAG, "  User-Agent: %s", this->useragent_);
+  ESP_LOGCONFIG(TAG, "  Follow Redirects: %d", this->follow_redirects_);
+  ESP_LOGCONFIG(TAG, "  Redirect limit: %d", this->redirect_limit_);
 }
 
 void HttpRequestComponent::set_url(std::string url) {
@@ -38,18 +40,21 @@ void HttpRequestComponent::send(const std::vector<HttpRequestResponseTrigger *> 
 
   bool begin_status = false;
   const String url = this->url_.c_str();
-#ifdef USE_ESP32
+#if defined(USE_ESP32) || (defined(USE_ESP8266) && USE_ARDUINO_VERSION_CODE >= VERSION_CODE(2, 6, 0))
+#if defined(USE_ESP32) || USE_ARDUINO_VERSION_CODE >= VERSION_CODE(2, 7, 0)
+  if (this->follow_redirects_) {
+    this->client_.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+  } else {
+    this->client_.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+  }
+#else
+  this->client_.setFollowRedirects(this->follow_redirects_);
+#endif
+  this->client_.setRedirectLimit(this->redirect_limit_);
+#endif
+#if defined(USE_ESP32)
   begin_status = this->client_.begin(url);
-#endif
-#ifdef USE_ESP8266
-#if USE_ARDUINO_VERSION_CODE >= VERSION_CODE(2, 7, 0)
-  this->client_.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-#elif USE_ARDUINO_VERSION_CODE >= VERSION_CODE(2, 6, 0)
-  this->client_.setFollowRedirects(true);
-#endif
-#if USE_ARDUINO_VERSION_CODE >= VERSION_CODE(2, 6, 0)
-  this->client_.setRedirectLimit(3);
-#endif
+#elif defined(USE_ESP8266)
   begin_status = this->client_.begin(*this->get_wifi_client_(), url);
 #endif
 
@@ -61,6 +66,9 @@ void HttpRequestComponent::send(const std::vector<HttpRequestResponseTrigger *> 
   }
 
   this->client_.setTimeout(this->timeout_);
+#if defined(USE_ESP32)
+  this->client_.setConnectTimeout(this->timeout_);
+#endif
   if (this->useragent_ != nullptr) {
     this->client_.setUserAgent(this->useragent_);
   }
@@ -68,25 +76,27 @@ void HttpRequestComponent::send(const std::vector<HttpRequestResponseTrigger *> 
     this->client_.addHeader(header.name, header.value, false, true);
   }
 
+  uint32_t start_time = millis();
   int http_code = this->client_.sendRequest(this->method_, this->body_.c_str());
+  uint32_t duration = millis() - start_time;
   for (auto *trigger : response_triggers)
-    trigger->process(http_code);
+    trigger->process(http_code, duration);
 
   if (http_code < 0) {
-    ESP_LOGW(TAG, "HTTP Request failed; URL: %s; Error: %s", this->url_.c_str(),
-             HTTPClient::errorToString(http_code).c_str());
+    ESP_LOGW(TAG, "HTTP Request failed; URL: %s; Error: %s; Duration: %u ms", this->url_.c_str(),
+             HTTPClient::errorToString(http_code).c_str(), duration);
     this->status_set_warning();
     return;
   }
 
   if (http_code < 200 || http_code >= 300) {
-    ESP_LOGW(TAG, "HTTP Request failed; URL: %s; Code: %d", this->url_.c_str(), http_code);
+    ESP_LOGW(TAG, "HTTP Request failed; URL: %s; Code: %d; Duration: %u ms", this->url_.c_str(), http_code, duration);
     this->status_set_warning();
     return;
   }
 
   this->status_clear_warning();
-  ESP_LOGD(TAG, "HTTP Request completed; URL: %s; Code: %d", this->url_.c_str(), http_code);
+  ESP_LOGD(TAG, "HTTP Request completed; URL: %s; Code: %d; Duration: %u ms", this->url_.c_str(), http_code, duration);
 }
 
 #ifdef USE_ESP8266
@@ -115,10 +125,16 @@ void HttpRequestComponent::close() {
 }
 
 const char *HttpRequestComponent::get_string() {
-  // The static variable is here because HTTPClient::getString() returns a String on ESP32, and we need something to
-  // to keep a buffer alive.
-  static std::string str;
-  str = this->client_.getString().c_str();
+#if defined(ESP32)
+  // The static variable is here because HTTPClient::getString() returns a String on ESP32,
+  // and we need something to keep a buffer alive.
+  static String str;
+#else
+  // However on ESP8266, HTTPClient::getString() returns a String& to a member variable.
+  // Leaving this the default so that any new platform either doesn't copy, or encounters a compilation error.
+  auto &
+#endif
+  str = this->client_.getString();
   return str.c_str();
 }
 
