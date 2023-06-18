@@ -12,6 +12,7 @@
 namespace esphome {
 namespace mqtt {
 
+
 struct Event {
   esp_mqtt_event_id_t event_id;
   std::vector<char> data;

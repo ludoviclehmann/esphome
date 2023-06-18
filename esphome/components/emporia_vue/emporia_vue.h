@@ -135,3 +135,4 @@ class CTClampConfig : public sensor::Sensor {
 }  // namespace esphome
 
 #endif  // ifdef USE_ESP32
+

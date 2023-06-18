@@ -113,6 +113,7 @@ void MQTTBackendIDF::mqtt_event_handler_(const Event &event) {
     } break;
     case MQTT_EVENT_ERROR:
       ESP_LOGE(TAG, "MQTT_EVENT_ERROR");
+
       if (event.error_handle.error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
         ESP_LOGE(TAG, "Last error code reported from esp-tls: 0x%x", event.error_handle.esp_tls_last_esp_err);
         ESP_LOGE(TAG, "Last tls stack error number: 0x%x", event.error_handle.esp_tls_stack_err);

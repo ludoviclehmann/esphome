@@ -187,6 +187,7 @@ void MQTTClientComponent::start_connect_() {
 
   this->mqtt_backend_.set_credentials(username, password);
 
+
   this->mqtt_backend_.set_server(this->credentials_.address.c_str(), this->credentials_.port);
   if (!this->last_will_.topic.empty()) {
     this->mqtt_backend_.set_will(this->last_will_.topic.c_str(), this->last_will_.qos, this->last_will_.retain,

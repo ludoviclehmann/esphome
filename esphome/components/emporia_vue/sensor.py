@@ -29,7 +29,7 @@ CONF_PHASE_ID = "phase_id"
 CODEOWNERS = ["@flaviut", "@Maelstrom96", "@krconv"]
 ESP_PLATFORMS = ["esp-idf"]
 DEPENDENCIES = ["i2c"]
-AUTO_LOAD = ["sensor"]
+AUTOLOAD = ["sensor"]
 
 emporia_vue_ns = cg.esphome_ns.namespace("emporia_vue")
 EmporiaVueComponent = emporia_vue_ns.class_(
@@ -86,7 +86,6 @@ SCHEMA_CT_CLAMP = {
     ),
 }
 
-
 def validate_phases(val):
     base_validated = cv.Schema(
         cv.ensure_list(
@@ -140,7 +139,6 @@ def validate_phases(val):
                 )
 
     return base_validated
-
 
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
